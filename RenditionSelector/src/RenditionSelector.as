@@ -60,6 +60,8 @@ package
         private var _renditionCombo:ComboBox;
         private var _choices:Array;
         private var _defaultChoice:String;
+        private var _currentRenditionIndex:int;
+        private var _currentComboIndex:int;
         private var _currentVideo:VideoDTO;
         private var _tim:Timer;
         
@@ -208,7 +210,7 @@ package
                     // then return that rendition's index
                     // this works because the renditions for a particular choice 
                     // are ordered by highest to lowest bit rate
-                    if (context.detectedBandwidth >= rendition.encodingRate ||
+                    if ((context.detectedBandwidth * 1024) >= rendition.encodingRate ||
                         i == renditions.length-1)
                     {
                         debug("detected bandwidth: " + context.detectedBandwidth);
@@ -216,6 +218,10 @@ package
                         debug("rendition encoding rate: " + rendition.encodingRate);
                         debug("rendition index: " + rendition.index);
                         index = rendition.index;
+                        if (index != _currentRenditionIndex && _renditionCombo.getSelectedIndex() == _currentComboIndex) {
+                            _currentRenditionIndex = index;
+                            hideLoader();
+                        }
                         break;
                     }
                 }
@@ -229,6 +235,7 @@ package
          */ 
         private function handleRenditionChangeComplete(event:MediaEvent):void
         {
+            _currentComboIndex = _renditionCombo.getSelectedIndex();
             if (!_waitForTimer)
             {
                 // we only do this if the video was playing
@@ -256,9 +263,6 @@ package
         {
             if (_loaderVisible)
             {
-                // restore the volume to where it was before rendition change
-                _videoPlayerModule.setVolume(_volume);
-                
                 // hide the overlay and spinner
                 _stage.removeChild(_overlay);
                 _experienceModule.setEnabled(true);
@@ -282,6 +286,8 @@ package
             drawOverlay();
             _stage.addChild(_overlay);
             _experienceModule.setEnabled(false);   
+            // restore the volume to where it was
+            _videoPlayerModule.setVolume(_volume);
         }
         
         /**
@@ -415,30 +421,26 @@ package
                 for (var j:int = 0; j < _choices.length; j++)
                 {
                     var choice:Object = _choices[j];
-                    if (choice.low == -1)
+                    var obj:Object = {};
+                    obj.label = choice.label;
+                    obj.value = [];
+                    
+                    for (var k:int = 0; k < renditions.length; k++)
                     {
-                        data.push({label: choice.label, value: -1});
-                    }
-                    else
-                    {
-                        var obj:Object = {};
-                        obj.label = choice.label;
-                        obj.value = [];
+                        var rendition:RenditionAssetDTO = RenditionAssetDTO(renditions[k]);
                         
-                        for (var k:int = 0; k < renditions.length; k++)
+                        if (choice.low == -1 || rendition.encodingRate >= choice.low && rendition.encodingRate <= choice.high)
                         {
-                            var rendition:RenditionAssetDTO = RenditionAssetDTO(renditions[k]);
-                            
-                            if (rendition.encodingRate >= choice.low && rendition.encodingRate <= choice.high)
-                            {
-                                obj.value.push({encodingRate: rendition.encodingRate, index: k});
+                            if (choice.low != -1) {
+                                debug("index = " + k + ", encodingRate = " + rendition.encodingRate);
                             }
+                            obj.value.push({encodingRate: rendition.encodingRate, index: k});
                         }
-                        
-                        if (obj.value.length > 0)
-                        {
-                            data.push(obj);
-                        }
+                    }
+                    
+                    if (obj.value.length > 0)
+                    {
+                        data.push(obj);
                     }
                 }
 				
@@ -449,20 +451,35 @@ package
             
             if (data.length > 0)
             {
+                var i:int = 0;
                 if (_defaultChoice)
                 {
-                    for (var i:int = 0; i < data.length; i++)
+                    var defaultChoiceSet:Boolean = false;
+                    for (i = 0; i < data.length; i++)
                     {
                         if (data[i].label == _defaultChoice)
                         {
-                            _renditionCombo.setSelectedIndex(i);
+                            defaultChoiceSet = true;
                             break;
                         }
                     }
+                    if (!defaultChoiceSet) {
+                        // In case _defaultChoice doesn't match anything
+                        i = 0;
+                    }
+                }
+                
+                _renditionCombo.setSelectedIndex(i);
+                _currentRenditionIndex = data[i].value[0].index;
+                _currentComboIndex = i;
+                
+                if (_videoPlayerModule.getCurrentVideo().FLVFullLengthStreamed)
+                {
+                    resizeVideo();
                 }
                 else
                 {
-                    _renditionCombo.setSelectedIndex(0);
+                    reloadVideo();
                 }
                 _renditionCombo.addEventListener(PropertyChangeEvent.CHANGE, handleRenditionComboChange);
             }
