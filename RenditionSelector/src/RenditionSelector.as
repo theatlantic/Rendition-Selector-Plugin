@@ -59,6 +59,7 @@ package
         private var _videoPlayerModule:VideoPlayerModule;
         private var _renditionCombo:ComboBox;
         private var _choices:Array;
+        private var _choicesByBitrate:Object;
         private var _defaultChoice:String;
         private var _currentRenditionIndex:int;
         private var _currentComboIndex:int;
@@ -218,7 +219,22 @@ package
                         debug("rendition encoding rate: " + rendition.encodingRate);
                         debug("rendition index: " + rendition.index);
                         index = rendition.index;
-                        if (index != _currentRenditionIndex && _renditionCombo.getSelectedIndex() == _currentComboIndex) {
+                        var choice:Object = _choices[rendition.choice];
+                        if (choice.low == -1) {
+                            // Current choice is auto, pick selector that current
+                            // encodingRate falls into.
+                            // @TODO: Deal with situations where the quality ranges
+                            // defined in query params don't cover all possible encodingRanges
+                            var newChoiceIndexObj:Object = _choicesByBitrate[rendition.encodingRate];
+                            if (newChoiceIndexObj) {
+                                _renditionCombo.setSelectedIndex(newChoiceIndexObj.choice);
+                                _currentRenditionIndex = newChoiceIndexObj.index;
+                                _currentComboIndex = newChoiceIndexObj.choice;
+                            }
+                            _currentRenditionIndex = index;
+                            hideLoader();
+                        }
+                        else if (index != _currentRenditionIndex && _renditionCombo.getSelectedIndex() == _currentComboIndex) {
                             _currentRenditionIndex = index;
                             hideLoader();
                         }
@@ -408,11 +424,12 @@ package
         {
             debug("populateRenditionCombo");
             
+            _choicesByBitrate = {};
             var renditions:Array = _videoPlayerModule.getCurrentVideo().renditions;
-    		
-			renditions.sortOn("encodingRate",Array.NUMERIC | Array.DESCENDING);
             
-			debug("renditions.length: " + renditions.length);
+            renditions.sortOn("encodingRate",Array.NUMERIC | Array.DESCENDING);
+            
+            debug("renditions.length: " + renditions.length);
             
             var data:Array = [];
             
@@ -433,8 +450,13 @@ package
                         {
                             if (choice.low != -1) {
                                 debug("index = " + k + ", encodingRate = " + rendition.encodingRate);
+                                var choiceIndexObj:Object = {
+                                    choice: data.length,
+                                    index: k
+                                };
+                                _choicesByBitrate[rendition.encodingRate] = choiceIndexObj;
                             }
-                            obj.value.push({encodingRate: rendition.encodingRate, index: k});
+                            obj.value.push({encodingRate: rendition.encodingRate, index: k, choice: data.length});
                         }
                     }
                     
